@@ -1,0 +1,3 @@
+[submodule "vendor/lattice"]
+	path = vendor/lattice
+	url = https://github.com/bradglenn6/zerolabz-lattice.git

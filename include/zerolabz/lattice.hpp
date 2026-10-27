@@ -7,6 +7,7 @@
 
 #include "submicro_engine.hpp"
 #include "pqc_zerotrust.hpp"
+#include "telemetry_visualizer.hpp"
 
 namespace zerolabz {
     inline constexpr const char* LATTICE_CORE_VERSION = "1.0.0";
