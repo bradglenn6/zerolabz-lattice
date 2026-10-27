@@ -1,0 +1,28 @@
+{
+  "name": "@zerolabz/lattice-core",
+  "version": "1.0.0",
+  "description": "Sub-microsecond mathematical mapping kernel and post-quantum zero-trust (FIPS 203/204) execution engine",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "install": "node-gyp rebuild",
+    "build:ts": "tsc",
+    "bench": "node test/bench.mjs",
+    "prepublishOnly": "npm run build:ts"
+  },
+  "dependencies": {
+    "node-addon-api": "^8.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^5.6.0"
+  },
+  "files": [
+    "include",
+    "src",
+    "binding.gyp",
+    "dist"
+  ],
+  "author": "Bradley Jones",
+  "license": "Apache-2.0"
+}

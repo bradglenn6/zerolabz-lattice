@@ -1,7 +1,9 @@
 ﻿build/
 bin/
 .cache/
+node_modules/
 *.exe
 *.obj
 *.pdb
+*.node
 .vs/
