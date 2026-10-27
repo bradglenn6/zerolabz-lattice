@@ -1,0 +1,21 @@
+zerolabz-lattice-core/
+├── cmake/
+│   └── compiler_flags.cmake       # AVX-512, AVX2, FMA3, NEON target flags
+├── include/
+│   └── zerolabz/
+│       ├── lattice.hpp            # Master umbrella header
+│       ├── submicro_engine.hpp    # StatelessSubMicroMapper & read_tsc()
+│       ├── pqc_zerotrust.hpp      # ML-KEM-768, ML-DSA-65 & 12ns SIMD barrier
+│       └── simd_vector.hpp        # Aligned vector ops & register lanes
+├── benchmarks/
+│   ├── bench_submicro.cpp         # Direct TSC hardware cycle microbenchmarks
+│   └── bench_pqc_barrier.cpp      # Zero Trust SIMD barrier verification
+├── tests/
+│   ├── test_manifolds.cpp         # Affine, Orthogonal, Harmonic Hash tests
+│   └── test_kat_vectors.cpp       # Known Answer Tests for ML-KEM / ML-DSA
+├── docs/
+│   ├── ARCHITECTURE.md            # Hardware register mapping & cache prefetch
+│   ├── BENCHMARKS.md              # Latency spectrum (Cloud vs Redis vs Lattice)
+│   └── SPEC_CNSA2_ZTA.md          # FIPS 203/204 & Zero Trust compliance
+├── CMakeLists.txt
+└── README.md

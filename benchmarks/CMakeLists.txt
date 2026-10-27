@@ -1,0 +1,2 @@
+﻿add_executable(bench_submicro bench_submicro.cpp)
+target_link_libraries(bench_submicro PRIVATE lattice_core)
