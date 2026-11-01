@@ -1,6 +1,6 @@
 {
   "name": "@zerolabz/lattice-core",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Sub-microsecond mathematical mapping kernel and post-quantum zero-trust (FIPS 203/204) execution engine",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
