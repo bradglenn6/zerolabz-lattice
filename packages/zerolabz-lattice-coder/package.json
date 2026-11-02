@@ -1,0 +1,60 @@
+{
+  "name": "zerolabz-lattice-coder",
+  "displayName": "ZeroLabz AI Coder",
+  "description": "Next-generation AI coding engine powered by sub-microsecond SIMD vector projection.",
+  "version": "1.0.0",
+  "publisher": "zerolabz",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bradglenn6/zerolabz-lattice.git"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Machine Learning",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "zerolabz.scoreContext",
+        "title": "ZeroLabz: Score Current File Context"
+      },
+      {
+        "command": "zerolabz.rankSimilarFiles",
+        "title": "ZeroLabz: Rank Top 3 Semantically Similar Workspace Files"
+      },
+      {
+        "command": "zerolabz.copyAttestedContext",
+        "title": "ZeroLabz: Copy PQ-ZTA Attested RAG Context Bundle"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "zerolabz.copyAttestedContext",
+        "key": "ctrl+alt+l",
+        "mac": "cmd+alt+l",
+        "when": "editorTextFocus"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "@zerolabz/lattice-core": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.1.3"
+  }
+}

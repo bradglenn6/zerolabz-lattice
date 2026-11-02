@@ -1,0 +1,10 @@
+.vscode/**
+src/**
+tsconfig.json
+*.cjs
+**/*.map
+**/*.ts
+node_modules/@zerolabz/lattice-core/build/Release/obj/**
+node_modules/@zerolabz/lattice-core/build/Release/*.pdb
+node_modules/@zerolabz/lattice-core/build/Release/*.ipdb
+node_modules/@zerolabz/lattice-core/build/Release/*.iobj
