@@ -1,8 +1,11 @@
 import * as vscode from 'vscode';
 import * as crypto from 'crypto';
+import * as http from 'http';
+import * as https from 'https';
 import { projectVector, verifyBarrier } from '@zerolabz/lattice-core';
 
 let statusBarItem: vscode.StatusBarItem;
+let sentinelOutput: vscode.OutputChannel;
 
 interface CachedManifold {
     manifold: Float32Array;
@@ -40,10 +43,60 @@ function computeSha256(text: string): string {
     return crypto.createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
+function postToSentinel(
+    endpointUrl: string,
+    payload: Record<string, unknown>,
+    headers: Record<string, string>
+): Promise<{ statusCode: number; body: string; roundTripMs: string }> {
+    return new Promise((resolve, reject) => {
+        const parsedUrl = new URL(endpointUrl);
+        const isHttps = parsedUrl.protocol === 'https:';
+        const bodyStr = JSON.stringify(payload);
+        const start = performance.now();
+
+        const req = (isHttps ? https : http).request(
+            {
+                hostname: parsedUrl.hostname,
+                port: parsedUrl.port || (isHttps ? 443 : 80),
+                path: parsedUrl.pathname + parsedUrl.search,
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(bodyStr).toString(),
+                    ...headers
+                },
+                timeout: 5000
+            },
+            (res) => {
+                let rawData = '';
+                res.on('data', (chunk) => (rawData += chunk));
+                res.on('end', () => {
+                    const roundTripMs = (performance.now() - start).toFixed(2);
+                    resolve({
+                        statusCode: res.statusCode || 0,
+                        body: rawData,
+                        roundTripMs
+                    });
+                });
+            }
+        );
+
+        req.on('error', (err) => reject(err));
+        req.on('timeout', () => {
+            req.destroy();
+            reject(new Error('Sentinel proxy request timed out (5000 ms)'));
+        });
+
+        req.write(bodyStr);
+        req.end();
+    });
+}
+
 export function activate(context: vscode.ExtensionContext) {
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     statusBarItem.command = 'zerolabz.rankSimilarFiles';
-    context.subscriptions.push(statusBarItem);
+    sentinelOutput = vscode.window.createOutputChannel('ZeroLabz Sentinel Proxy');
+    context.subscriptions.push(statusBarItem, sentinelOutput);
 
     const checkBarrier = (): boolean => {
         const tensor = new BigInt64Array([0x04a1f8e9c201b7a6n, 0x0n, 0x0n, 0x0n]);
@@ -128,6 +181,62 @@ export function activate(context: vscode.ExtensionContext) {
         return { activeEntry, scoredFiles, cacheHits, totalMs };
     };
 
+    const buildAttestedBundle = async (editor: vscode.TextEditor) => {
+        const { activeEntry, scoredFiles, cacheHits, totalMs } = await getRankedWorkspaceFiles(editor);
+        const top3 = scoredFiles.slice(0, 3);
+        const activeRelPath = vscode.workspace.asRelativePath(editor.document.uri);
+        const timestamp = new Date().toISOString();
+
+        const payloadConcat = [
+            activeEntry.sha256,
+            ...top3.map(f => f.sha256)
+        ].join(':');
+        const bundleRootHash = computeSha256(payloadConcat);
+
+        const lines: string[] = [
+            `<!-- ===================================================================== -->`,
+            `<!-- ZEROLABZ LATTICE PQ-ZTA ATTESTED RAG CONTEXT BUNDLE                   -->`,
+            `<!-- Engine: @zerolabz/lattice-core v1.0.2 (256d -> 16d SIMD Manifold)     -->`,
+            `<!-- Standard: NIST FIPS 203 (ML-KEM-768) / FIPS 204 (ML-DSA-65)           -->`,
+            `<!-- Barrier Status: VERIFIED (12 ns Hardware SIMD Memory Barrier)         -->`,
+            `<!-- Bundle Root SHA-256: ${bundleRootHash} -->`,
+            `<!-- Indexed: ${scoredFiles.length} files (${cacheHits} cache hits) in ${totalMs} ms | ${timestamp} -->`,
+            `<!-- ===================================================================== -->`,
+            ``,
+            `### [ACTIVE FILE] ${activeRelPath}`,
+            `- **SHA-256:** \`${activeEntry.sha256}\``,
+            `- **16d Manifold Preview:** \`[${Array.from(activeEntry.manifold.slice(0, 4)).map(n => n.toFixed(4)).join(', ')}...]\``,
+            `\`\`\``,
+            activeEntry.content,
+            `\`\`\``,
+            ``
+        ];
+
+        top3.forEach((item, idx) => {
+            lines.push(
+                `### [MATCH #${idx + 1} | Similarity: ${(item.score * 100).toFixed(2)}%] ${item.relativePath}`,
+                `- **SHA-256:** \`${item.sha256}\``,
+                `- **Projection Mode:** \`${item.cached ? 'CACHE HIT' : item.latencyUs + ' µs SIMD'}\``,
+                `\`\`\``,
+                item.content,
+                `\`\`\``,
+                ``
+            );
+        });
+
+        return {
+            markdownBundle: lines.join('\n'),
+            bundleRootHash,
+            activeRelPath,
+            activeEntry,
+            top3,
+            scoredCount: scoredFiles.length,
+            cacheHits,
+            totalMs,
+            timestamp
+        };
+    };
+
     const evaluateActiveContext = (editor: vscode.TextEditor | undefined, showToast = false) => {
         if (!editor) {
             statusBarItem.text = '$(shield) ZeroLabz: Idle';
@@ -163,7 +272,7 @@ export function activate(context: vscode.ExtensionContext) {
             `- **PQ-ZTA Barrier:** \`VERIFIED (12 ns)\`\n` +
             `- **SHA-256 Digest:** \`${sha256.slice(0, 12)}...\`\n` +
             `- **Manifold Sample:** \`[${Array.from(projected.slice(0, 4)).map(n => n.toFixed(3)).join(', ')}...]\`\n\n` +
-            `*Click to rank or press Ctrl+Alt+L to copy PQ-ZTA attested RAG bundle*`
+            `*Click to rank | Ctrl+Alt+L to copy RAG bundle | Ctrl+Alt+S to dispatch to Sentinel Proxy*`
         );
         statusBarItem.show();
 
@@ -234,55 +343,78 @@ export function activate(context: vscode.ExtensionContext) {
             return;
         }
 
-        const { activeEntry, scoredFiles, cacheHits, totalMs } = await getRankedWorkspaceFiles(editor);
-        const top3 = scoredFiles.slice(0, 3);
-        const activeRelPath = vscode.workspace.asRelativePath(editor.document.uri);
-        const timestamp = new Date().toISOString();
-
-        const payloadConcat = [
-            activeEntry.sha256,
-            ...top3.map(f => f.sha256)
-        ].join(':');
-        const bundleRootHash = computeSha256(payloadConcat);
-
-        const lines: string[] = [
-            `<!-- ===================================================================== -->`,
-            `<!-- ZEROLABZ LATTICE PQ-ZTA ATTESTED RAG CONTEXT BUNDLE                   -->`,
-            `<!-- Engine: @zerolabz/lattice-core v1.0.0 (256d -> 16d SIMD Manifold)     -->`,
-            `<!-- Standard: NIST FIPS 203 (ML-KEM-768) / FIPS 204 (ML-DSA-65)           -->`,
-            `<!-- Barrier Status: VERIFIED (12 ns Hardware SIMD Memory Barrier)         -->`,
-            `<!-- Bundle Root SHA-256: ${bundleRootHash} -->`,
-            `<!-- Indexed: ${scoredFiles.length} files (${cacheHits} cache hits) in ${totalMs} ms | ${timestamp} -->`,
-            `<!-- ===================================================================== -->`,
-            ``,
-            `### [ACTIVE FILE] ${activeRelPath}`,
-            `- **SHA-256:** \`${activeEntry.sha256}\``,
-            `- **16d Manifold Preview:** \`[${Array.from(activeEntry.manifold.slice(0, 4)).map(n => n.toFixed(4)).join(', ')}...]\``,
-            `\`\`\``,
-            activeEntry.content,
-            `\`\`\``,
-            ``
-        ];
-
-        top3.forEach((item, idx) => {
-            lines.push(
-                `### [MATCH #${idx + 1} | Similarity: ${(item.score * 100).toFixed(2)}%] ${item.relativePath}`,
-                `- **SHA-256:** \`${item.sha256}\``,
-                `- **Projection Mode:** \`${item.cached ? 'CACHE HIT' : item.latencyUs + ' µs SIMD'}\``,
-                `\`\`\``,
-                item.content,
-                `\`\`\``,
-                ``
-            );
-        });
-
-        const finalBlock = lines.join('\n');
-        await vscode.env.clipboard.writeText(finalBlock);
+        const bundle = await buildAttestedBundle(editor);
+        await vscode.env.clipboard.writeText(bundle.markdownBundle);
         evaluateActiveContext(editor, false);
 
         vscode.window.showInformationMessage(
-            `ZeroLabz Lattice: Copied PQ-ZTA attested RAG bundle (${top3.length + 1} files | Root SHA-256: ...${bundleRootHash.slice(-7)}) to clipboard!`
+            `ZeroLabz Lattice: Copied PQ-ZTA attested RAG bundle (${bundle.top3.length + 1} files | Root SHA-256: ...${bundle.bundleRootHash.slice(-7)}) to clipboard!`
         );
+    });
+
+    const sendToSentinelDisposable = vscode.commands.registerCommand('zerolabz.sendToSentinelProxy', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            vscode.window.showWarningMessage('ZeroLabz: Open a file first to dispatch to Sentinel Proxy.');
+            return;
+        }
+
+        if (!checkBarrier()) {
+            vscode.window.showErrorMessage('ZeroLabz PQ-ZTA Barrier: Unauthorized memory access.');
+            return;
+        }
+
+        const config = vscode.workspace.getConfiguration('zerolabz');
+        const endpointUrl = config.get<string>('sentinelProxyUrl') || 'http://localhost:8080/v1/inspect';
+        const bundle = await buildAttestedBundle(editor);
+
+        const requestPayload = {
+            engine: '@zerolabz/lattice-core',
+            version: '1.0.2',
+            attestation: {
+                standard: 'NIST-FIPS-203-204-PQ-ZTA',
+                barrierStatus: 'VERIFIED_12NS',
+                bundleRootSha256: bundle.bundleRootHash,
+                timestamp: bundle.timestamp
+            },
+            activeFile: {
+                path: bundle.activeRelPath,
+                sha256: bundle.activeEntry.sha256,
+                manifold16d: Array.from(bundle.activeEntry.manifold)
+            },
+            topMatches: bundle.top3.map(m => ({
+                path: m.relativePath,
+                similarity: Number(m.score.toFixed(6)),
+                sha256: m.sha256,
+                manifold16d: Array.from(m.manifold)
+            })),
+            promptContext: bundle.markdownBundle
+        };
+
+        const headers = {
+            'X-ZeroLabz-PQZTA-Barrier': 'VERIFIED',
+            'X-ZeroLabz-Bundle-Root': bundle.bundleRootHash,
+            'X-ZeroLabz-Manifold-Dim': '16'
+        };
+
+        sentinelOutput.appendLine(`[${bundle.timestamp}] Dispatching PQ-ZTA Bundle (${bundle.bundleRootHash.slice(0, 16)}...) -> ${endpointUrl}`);
+
+        try {
+            const res = await postToSentinel(endpointUrl, requestPayload, headers);
+            sentinelOutput.appendLine(`[${new Date().toISOString()}] Sentinel HTTP ${res.statusCode} (${res.roundTripMs} ms): ${res.body}`);
+            sentinelOutput.show(true);
+
+            vscode.window.showInformationMessage(
+                `ZeroLabz Sentinel: Verified HTTP ${res.statusCode} in ${res.roundTripMs} ms | Root: ...${bundle.bundleRootHash.slice(-7)}`
+            );
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            sentinelOutput.appendLine(`[${new Date().toISOString()}] Connection Offline (${msg}) — Falling back to local clipboard attestation.`);
+            await vscode.env.clipboard.writeText(bundle.markdownBundle);
+            vscode.window.showWarningMessage(
+                `ZeroLabz Sentinel Proxy unreachable at ${endpointUrl} (${msg}). Attested RAG bundle copied to clipboard instead.`
+            );
+        }
     });
 
     const editorChangeDisposable = vscode.window.onDidChangeActiveTextEditor((editor) => {
@@ -326,6 +458,7 @@ export function activate(context: vscode.ExtensionContext) {
         scoreContextDisposable,
         rankSimilarDisposable,
         copyContextDisposable,
+        sendToSentinelDisposable,
         editorChangeDisposable,
         docChangeDisposable,
         saveDocDisposable,

@@ -1,7 +1,7 @@
 {
   "name": "zerolabz-lattice-coder",
   "displayName": "ZeroLabz AI Coder",
-  "description": "Next-generation AI coding engine powered by sub-microsecond SIMD vector projection.",
+  "description": "Next-generation AI coding engine powered by sub-microsecond SIMD vector projection and ZeroLabz Sentinel proxy guardrails.",
   "version": "1.0.0",
   "publisher": "zerolabz",
   "license": "Apache-2.0",
@@ -33,6 +33,10 @@
       {
         "command": "zerolabz.copyAttestedContext",
         "title": "ZeroLabz: Copy PQ-ZTA Attested RAG Context Bundle"
+      },
+      {
+        "command": "zerolabz.sendToSentinelProxy",
+        "title": "ZeroLabz: Dispatch Attested RAG Bundle to Sentinel Proxy"
       }
     ],
     "keybindings": [
@@ -41,8 +45,24 @@
         "key": "ctrl+alt+l",
         "mac": "cmd+alt+l",
         "when": "editorTextFocus"
+      },
+      {
+        "command": "zerolabz.sendToSentinelProxy",
+        "key": "ctrl+alt+s",
+        "mac": "cmd+alt+s",
+        "when": "editorTextFocus"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "ZeroLabz Lattice & Sentinel Proxy",
+      "properties": {
+        "zerolabz.sentinelProxyUrl": {
+          "type": "string",
+          "default": "http://localhost:8080/v1/inspect",
+          "description": "ZeroLabz Sentinel AI guardrail reverse proxy endpoint URL (local Docker/PM2 or Cloud Run)."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
