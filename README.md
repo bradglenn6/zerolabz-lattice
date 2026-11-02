@@ -1,4 +1,4 @@
-﻿# ZeroLabz Lattice Core
+# ZeroLabz Lattice Core
 
 Stateless, zero-allocation sub-microsecond vector mapping and post-quantum zero-trust (FIPS 203/204) execution engine.
 
