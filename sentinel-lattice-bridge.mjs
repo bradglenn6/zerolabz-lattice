@@ -4,7 +4,6 @@ import { verifyBarrier } from './index.js';
 const PORT = process.env.SENTINEL_PORT || 8080;
 const DLP_REGEX = /(PRIVATE_KEY|SECRET_KEY|sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{30,}|AIza[0-9A-Za-z-_]{35})/g;
 
-// Warm up V8 regex & native barrier
 for (let i = 0; i < 500; i++) DLP_REGEX.test('warmup');
 verifyBarrier(new BigInt64Array([0x04a1f8e9c201b7a6n, 0n, 0n, 0n]), 0x04a1f8e9c201b7a6n);
 
