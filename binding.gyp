@@ -3,26 +3,21 @@
     {
       "target_name": "lattice_native",
       "sources": [ "src/addon.cpp" ],
-      "include_dirs": [
-        "<!@(node -p \"require('node-addon-api').include\")",
-        "include"
-      ],
-      "dependencies": [
-        "<!(node -p \"require('node-addon-api').gyp\")"
-      ],
-      "cflags!": [ "-fno-exceptions" ],
-      "cflags_cc!": [ "-fno-exceptions" ],
-      "defines": [ "NAPI_DISABLE_CPP_EXCEPTIONS" ],
       "conditions": [
-        ['OS=="win"', {
+        ["OS=='win'", {
           "msvs_settings": {
             "VCCLCompilerTool": {
-              "AdditionalOptions": [ "/arch:AVX2", "/std:c++20" ]
+              "Optimization": 3,
+              "InlineFunctionExpansion": 2,
+              "EnableIntrinsicFunctions": "true",
+              "FavorSizeOrSpeed": 1,
+              "EnableEnhancedInstructionSet": 3,
+              "FloatingPointModel": 2
             }
           }
         }],
-        ['OS!="win"', {
-          "cflags_cc": [ "-std=c++20", "-mavx2", "-mfma", "-O3" ]
+        ["OS!='win'", {
+          "cflags_cc": [ "-O3", "-mavx2", "-mfma", "-ffast-math" ]
         }]
       ]
     }
